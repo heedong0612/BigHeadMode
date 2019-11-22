@@ -5,6 +5,17 @@
 #include "opencv2/videoio.hpp"
 #include <iostream>
 
+
+/*********************************************
+Improvements suggestions:
+
+	1) Detect ALL faces and enlarge all
+	2) Enlarge the eyse also
+	3) 
+
+
+***********************************************/
+
 using namespace cv;
 using namespace std;
 
@@ -19,10 +30,102 @@ CascadeClassifier face_cascade;
 CascadeClassifier eyes_cascade;
 //CascadeClassifier smile_cascade;
 
+
+
+// bilinearInterpolation
+// pre: Imgage& input, double row, and double col are passed in. 
+//		input image is correctly allocated and formatted.
+// post: perfroms bilinear interpolation for a target pixel of given coordinate
+//		 row and col, and outputs a new pixel value. if any of four pixels around 
+//		 the center pixel is out of the scope of input image, it returns a black pixel.
+Vec3b bilinearInterpolation(const Mat& input, double row, double col) {
+
+	Vec3b px;
+	px[2] = 0.0;
+	px[1] = 0.0;
+	px[0] = 0.0;
+
+	// there exists four pixels around the target pixel in the scope of the input image
+	if (row >= 0.0 && row + 1.0 < input.rows &&
+		col >= 0.0 && col + 1.0 < input.cols) {
+
+		double redI, greenI, blueI;
+		double alpha = row - floor(row);
+		double beta = col - floor(col);
+
+		// four pixels around the target pixel
+		Vec3b pixelA = input.at<Vec3b>(row, col);
+		Vec3b pixelB = input.at<Vec3b>(row + 1.0, col);
+		Vec3b pixelC = input.at<Vec3b>(row, col + 1.0);
+		Vec3b pixelD = input.at<Vec3b>(row + 1.0, col + 1.0);
+
+		// red intensity
+		redI = (1.0 - alpha) * (1.0 - beta) * pixelA[2]
+			+ alpha * (1.0 - beta) * pixelB[2]
+			+ (1.0 - alpha) * beta * pixelC[2]
+			+ alpha * beta * pixelD[2];
+
+		// green intensity
+		greenI = (1.0 - alpha) * (1.0 - beta) * pixelA[1]
+			+ alpha * (1.0 - beta) * pixelB[1]
+			+ (1.0 - alpha) * beta * pixelC[1]
+			+ alpha * beta * pixelD[1];
+
+		// blue intensity
+		blueI = (1.0 - alpha) * (1.0 - beta) * pixelA[0]
+			+ alpha * (1.0 - beta) * pixelB[0]
+			+ (1.0 - alpha) * beta * pixelC[0]
+			+ alpha * beta * pixelD[0];
+
+		// set new pixel values calculated
+		px[2] = static_cast<int>(floor(redI));
+		px[1] = static_cast<int>(floor(greenI));
+		px[0] = static_cast<int>(floor(blueI));
+	}
+	return px;
+}
+
+
+// scale
+// pre:	Image& input, double sx, and double sy are passed in. 
+//		input image passed in is correctly allocated and formatted. 
+// post: returns output image which is the width of the input that is 
+//		 scaled by float sx and the height of the input scaled by float sy,
+//		 using bilinear interpolation. pixels out side of the boundaries of
+//		 the input image is represented as black.
+Mat scale(const Mat& input, double sx, double sy) {
+	Mat output(input);
+
+	double centerRow = input.rows / 2.0;
+	double centerCol = input.cols / 2.0;
+
+	for (int row = 0; row < input.rows; row++) {
+		for (int col = 0; col < input.cols; col++) {
+			double x = (col - centerCol) / sy + centerCol;
+			double y = (row - centerRow) / sx + centerRow;
+
+			if (x > 0 && x < input.cols && y > 0 && y < input.rows) {
+				output.at<Vec3b>(row, col) = bilinearInterpolation(input, y, x);
+			}
+		}
+	}
+	return output;
+}
+
+
 int main(int argc, const char** argv) {
 	std::cout << "runs";
 
-	Mat frame = imread("OGJ.jpg");
+	Mat original = imread("OGJ.jpg");
+
+	// testing scale function
+
+	//Mat frame = scale(original, 1.2, 1.2);
+	//imwrite("faceEnlarged", frame);
+	//namedWindow("Capture - Face detection", WINDOW_NORMAL);
+	////resizeWindow("Capture - Face detection", frame.cols / 6, frame.rows / 6);
+	//imshow("Capture - Face detection", frame);
+	//waitKey(0);
 
 	//-- 1. Load the cascades
 	if (!face_cascade.load(face_cascade_name)) { printf("--(1)Error loading\n"); return -1; };
@@ -30,73 +133,13 @@ int main(int argc, const char** argv) {
 	//if (!smile_cascade.load(smile_cascade_name)) { printf("--(3)Error loading\n"); return -1; };
 
 	//-- 2. Apply the classifier to the frame
-	detectAndDisplay(frame);
+	detectAndDisplay(original);
 	cout << "Done";
 	//imwrite("output.jpg", input);
 
 	
 
 	return 0;
-}
-
-
-Vec3b bilinearInterpolate(const Mat& input, double x, double y)
-{
-	Vec3b ans;
-	ans[2] = 0;
-	ans[1] = 0;
-	ans[0] = 0;
-
-	//check if coordinate is out of bounds in the input image
-	if (x >= 0 && x < input.cols && y >= 0 && y < input.rows)
-	{
-		double x_f = floor(x);
-		double y_f = floor(y);
-		double alpha = y - y_f;
-		double beta = x - x_f;
-
-		Vec3b top_l = input.at< Vec3b>(y_f, x_f);
-		Vec3b top_r = input.at< Vec3b>(y_f, x_f + 1); //row, col + 1
-		Vec3b bot_l = input.at< Vec3b>(y_f + 1, x_f); //row + 1, col
-		Vec3b bot_r = input.at< Vec3b>(y_f + 1, x_f + 1); //row + 1, col + 1
-
-		int r = (1 - alpha) * (1 - beta) * top_l[2]
-			+ alpha * (1 - beta) * bot_l[2]
-			+ (1 - alpha) * beta * top_r[2]
-			+ alpha * beta * bot_r[2];
-		int g = (1 - alpha) * (1 - beta) * top_l[1]
-			+ alpha * (1 - beta) * bot_l[1]
-			+ (1 - alpha) * beta * top_r[1]
-			+ alpha * beta * bot_r[1];
-		int b = (1 - alpha) * (1 - beta) * top_l[0]
-			+ alpha * (1 - beta) * bot_l[0]
-			+ (1 - alpha) * beta * top_r[0]
-			+ alpha * beta * bot_r[0];
-
-		ans[2] = r;
-		ans[1] = g;
-		ans[0] = b;
-	}
-	return ans;
-}
-
-void scale(Mat& input, double sx, double sy)
-{
-	double cx = input.cols / 2;
-	double cy = input.rows / 2;
-
-	for (int row = 0; row < input.rows; row++)
-	{
-		for (int col = 0; col < input.cols; col++)
-		{
-
-			double newX = (col - cx) / sx + cx; //new x or new col
-			double newY = (row - cy) / sy + cy; //new y or new row
-
-			Vec3b pix = bilinearInterpolate(input, newX, newY);
-			input.at<Vec3b>(row, col) = pix;
-		}
-	}
 }
 
  Mat enlargeTheFace(const Mat& original, const Mat& onlyFace) {
@@ -153,13 +196,14 @@ Mat fetchFace(const Mat& original, int startingX, int startingY, int width, int 
 
 /** @function detectAndDisplay */
 void detectAndDisplay(Mat frame)
-{
+{ 
 	Mat jerFace;
+	Mat enlargedJer;
 	Mat frame_gray;
 	cvtColor(frame, frame_gray, COLOR_BGR2GRAY);
 	equalizeHist(frame_gray, frame_gray);
 
-
+	     
 	//-- Detect faces
 	std::vector<Rect> faces;
 	face_cascade.detectMultiScale(frame_gray, faces);
@@ -168,7 +212,7 @@ void detectAndDisplay(Mat frame)
 	{
 		cout << val << " ";
 	}
-	cout << "len of face : " << faces.size();
+	cout << "Number of faces detected : " << faces.size();
 	cout << endl;
 
 	for (size_t i = 0; i < faces.size(); i++)
@@ -198,7 +242,7 @@ void detectAndDisplay(Mat frame)
 
 		jerFace = fetchFace(frame, faces[i].x, faces[i].y, faces[i].width, faces[i].height * 1.3, center);
 
-		enlargeTheFace(jerFace, jerFace);
+		enlargedJer = scale(jerFace, 2.0, 2.0);
 
 		// Detect smile
 	/*	std::vector<Rect> smile;
@@ -227,6 +271,12 @@ void detectAndDisplay(Mat frame)
 	resizeWindow("Capture - Face detection", jerFace.cols / 6, jerFace.rows / 6);
 	imshow("Capture - Face detection", jerFace);
 	waitKey(0);
+
+	imwrite("enlargedFace.jpg", enlargedJer);
+	/*namedWindow("Capture - enlargedFace", WINDOW_NORMAL);
+	resizeWindow("Capture - enlargedFace", enlargedJer.cols / 6, enlargedJer.rows / 6);
+	imshow("Capture - enlargedFace", enlargedJer);
+	waitKey(0);*/
 
 }
 
