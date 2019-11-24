@@ -2,7 +2,7 @@
 #include "opencv2/objdetect.hpp"
 #include "opencv2/highgui.hpp"
 #include "opencv2/imgproc.hpp"
-#include "opencv2/videoio.hpp"
+#include "opencv2/videoio.hpp" 
 #include <iostream>
 
 
@@ -11,7 +11,7 @@ Improvements suggestions:
 
 	1) Detect ALL faces and enlarge all
 	2) Enlarge the eyse also
-	3) 
+	3)
 
 
 ***********************************************/
@@ -93,11 +93,11 @@ Vec3b bilinearInterpolation(const Mat& input, double row, double col) {
 //		 scaled by float sx and the height of the input scaled by float sy,
 //		 using bilinear interpolation. pixels out side of the boundaries of
 //		 the input image is represented as black.
-Mat scale(const Mat& input, double sx, double sy) {
-	Mat output(input);
+Mat scale(const Mat& input, int cx, int cy, double sx, double sy) {
+	Mat output(input.rows, input.cols, CV_8UC3);
 
-	double centerRow = input.rows / 2.0;
-	double centerCol = input.cols / 2.0;
+	double centerRow = cy;
+	double centerCol = cx;
 
 	for (int row = 0; row < input.rows; row++) {
 		for (int col = 0; col < input.cols; col++) {
@@ -105,10 +105,11 @@ Mat scale(const Mat& input, double sx, double sy) {
 			double y = (row - centerRow) / sx + centerRow;
 
 			if (x > 0 && x < input.cols && y > 0 && y < input.rows) {
-				output.at<Vec3b>(row, col) = bilinearInterpolation(input, y, x);
+				output.at<Vec3b>(row, col) = bilinearInterpolation(input, y, x); //input.at<Vec3b>(y, x);
 			}
 		}
 	}
+
 	return output;
 }
 
@@ -137,26 +138,26 @@ int main(int argc, const char** argv) {
 	cout << "Done";
 	//imwrite("output.jpg", input);
 
-	
+
 
 	return 0;
 }
 
- Mat enlargeTheFace(const Mat& original, const Mat& onlyFace) {
+Mat enlargeTheFace(const Mat& original, const Mat& onlyFace) {
 
-	 Mat enlargedFace(onlyFace);
+	Mat enlargedFace(onlyFace);
 
-	 scale(enlargedFace, 2, 2);
+	//scale(enlargedFace, 2, 2);
 
 
-	 imwrite("faceOnly.jpg", enlargedFace);
-	 namedWindow("Capture - Face detection", WINDOW_NORMAL);
-	 resizeWindow("Capture - Face detection", enlargedFace.cols / 6, enlargedFace.rows / 6);
-	 imshow("Capture - Face detection", enlargedFace);
-	 waitKey(0);
+	imwrite("faceOnly.jpg", enlargedFace);
+	namedWindow("Capture - Face detection", WINDOW_NORMAL);
+	resizeWindow("Capture - Face detection", enlargedFace.cols / 6, enlargedFace.rows / 6);
+	imshow("Capture - Face detection", enlargedFace);
+	waitKey(0);
 
-	 return enlargedFace;
- }
+	return enlargedFace;
+}
 
 
 Mat fetchFace(const Mat& original, int startingX, int startingY, int width, int height, Point center) {
@@ -178,7 +179,7 @@ Mat fetchFace(const Mat& original, int startingX, int startingY, int width, int 
 			// a is the x-axis radius
 			// b is the y-axis radius
 
-			
+
 			double leftHandSide1 = pow((col - center.x), 2) / pow((width / 2), 2);
 			double leftHandSide2 = pow((row - center.y), 2) / pow((height / 2), 2);
 			double LHS = leftHandSide1 + leftHandSide2;
@@ -196,19 +197,19 @@ Mat fetchFace(const Mat& original, int startingX, int startingY, int width, int 
 
 /** @function detectAndDisplay */
 void detectAndDisplay(Mat frame)
-{ 
+{
 	Mat jerFace;
 	Mat enlargedJer;
 	Mat frame_gray;
 	cvtColor(frame, frame_gray, COLOR_BGR2GRAY);
 	equalizeHist(frame_gray, frame_gray);
 
-	     
+
 	//-- Detect faces
 	std::vector<Rect> faces;
 	face_cascade.detectMultiScale(frame_gray, faces);
 
-	for(auto val : faces)
+	for (auto val : faces)
 	{
 		cout << val << " ";
 	}
@@ -217,10 +218,12 @@ void detectAndDisplay(Mat frame)
 
 	for (size_t i = 0; i < faces.size(); i++)
 	{
-		Point center(faces[i].x + faces[i].width / 2, faces[i].y + faces[i].height / 2 - faces[i].height * 0.08);
-		ellipse(frame, center, Size(faces[i].width / 2, (faces[i].height / 2)*1.3), 0, 0, 360, Scalar(255, 0, 255), 8);
+		int cx = faces[i].x + faces[i].width / 2;
+		int cy = faces[i].y + faces[i].height / 2 - faces[i].height * 0.08;
+		Point center(cx, cy);
+		ellipse(frame, center, Size(faces[i].width / 2, (faces[i].height / 2) * 1.3), 0, 0, 360, Scalar(255, 0, 255), 8);
 
-	
+
 		Point topLeft(faces[i].x, faces[i].y);
 		cout << topLeft << endl;
 		Point bottomRight(faces[i].x + faces[i].width, faces[i].y + faces[i].height);
@@ -232,7 +235,7 @@ void detectAndDisplay(Mat frame)
 		//-- In each face, detect eyes
 		std::vector<Rect> eyes;
 		eyes_cascade.detectMultiScale(faceROI, eyes);
-		
+
 		for (size_t j = 0; j < eyes.size(); j++)
 		{
 			Point eye_center(faces[i].x + eyes[j].x + eyes[j].width / 2, faces[i].y + eyes[j].y + eyes[j].height / 2);
@@ -241,8 +244,10 @@ void detectAndDisplay(Mat frame)
 		}
 
 		jerFace = fetchFace(frame, faces[i].x, faces[i].y, faces[i].width, faces[i].height * 1.3, center);
+		imwrite("faceOnly.jpg", jerFace);
 
-		enlargedJer = scale(jerFace, 2.0, 2.0);
+		enlargedJer = scale(jerFace, cx, cy, 2.0, 2.0);
+		imwrite("faceOnlyAfter.jpg", jerFace);
 
 		// Detect smile
 	/*	std::vector<Rect> smile;
@@ -266,10 +271,10 @@ void detectAndDisplay(Mat frame)
 	//waitKey(0);
 
 
-	imwrite("faceOnly.jpg", jerFace);
+	
 	namedWindow("Capture - Face detection", WINDOW_NORMAL);
 	resizeWindow("Capture - Face detection", jerFace.cols / 6, jerFace.rows / 6);
-	imshow("Capture - Face detection", jerFace);
+	imshow("Capture - Face detection", enlargedJer);
 	waitKey(0);
 
 	imwrite("enlargedFace.jpg", enlargedJer);
