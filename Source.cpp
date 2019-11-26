@@ -8,19 +8,16 @@
 
 /*********************************************
 Improvements suggestions:
-
 	1) Detect ALL faces and enlarge all
 	2) Enlarge the eyse also
 	3)
-
-
 ***********************************************/
 
 using namespace cv;
 using namespace std;
 
 /** Function Headers */
-void detectAndDisplay(Mat frame);
+Mat detectAndDisplay(const Mat &frame);
 
 /** Global variables */
 String face_cascade_name = "haarcascade_frontalface_alt.xml";
@@ -85,6 +82,41 @@ Vec3b bilinearInterpolation(const Mat& input, double row, double col) {
 	return px;
 }
 
+/*
+	--------------------------------------------Blur-------------------
+*/
+Mat blurCorner(Mat& face, int &width, int &height, Point center) {
+	Mat output(face);
+
+	for (int row = 0; row < output.rows; row++) {
+		for (int col = 0; col < output.cols; col++) {
+
+			// if in the elipse region
+			// do nothing
+			// if not, put in green
+
+			// ellipse equation
+			// (x - h)^2 / a^2 + (y - k)^2 / b^2 = 1
+			// x is col
+			// y is row
+			// h, k is the ellipse x, y center
+			// a is the x-axis radius
+			// b is the y-axis radius
+
+
+			double leftHandSide1 = pow((col - center.x), 2) / pow((width / 2), 2);
+			double leftHandSide2 = pow((row - center.y), 2) / pow((height / 2), 2);
+			double LHS = leftHandSide1 + leftHandSide2;
+
+			if (LHS > 0.35 && LHS <0.38) {
+				//cout << "in ";
+				output.at<Vec3b>(row, col) = { 0, 0, 0 };
+			}
+
+		}
+	}
+	return output;
+}
 
 // scale
 // pre:	Image& input, double sx, and double sy are passed in. 
@@ -113,34 +145,29 @@ Mat scale(const Mat& input, int cx, int cy, double sx, double sy) {
 	return output;
 }
 
+Mat overlay(const Mat& sourceImage, const Mat& originalImage) {
+	Mat output(originalImage);
+	//for (int col = 0; col < originalImage.cols; col++) {
+	//	for (int row = 0; row < originalImage.rows; row++) {
+	//		if ((sourceImage.at<Vec3b>(row, col)[0] == 0 &&
+	//			sourceImage.at<Vec3b>(row, col)[1] == 255 &&
+	//			sourceImage.at<Vec3b>(row, col)[2] == 0))
+	//			
+	//			/*(sourceImage.at<Vec3b>(row, col)[0] != 255 &&
+	//				sourceImage.at<Vec3b>(row, col)[1] != 0 &&
+	//				sourceImage.at<Vec3b>(row, col)[2] != 255))*/ {
 
-int main(int argc, const char** argv) {
-	std::cout << "runs";
+	//			output.at<Vec3b>(row, col) = sourceImage.at<Vec3b>(row, col);
+	//		}
+	//	}
+	//}
 
-	Mat original = imread("OGJ.jpg");
-
-	// testing scale function
-
-	//Mat frame = scale(original, 1.2, 1.2);
-	//imwrite("faceEnlarged", frame);
-	//namedWindow("Capture - Face detection", WINDOW_NORMAL);
-	////resizeWindow("Capture - Face detection", frame.cols / 6, frame.rows / 6);
-	//imshow("Capture - Face detection", frame);
-	//waitKey(0);
-
-	//-- 1. Load the cascades
-	if (!face_cascade.load(face_cascade_name)) { printf("--(1)Error loading\n"); return -1; };
-	if (!eyes_cascade.load(eyes_cascade_name)) { printf("--(2)Error loading\n"); return -1; };
-	//if (!smile_cascade.load(smile_cascade_name)) { printf("--(3)Error loading\n"); return -1; };
-
-	//-- 2. Apply the classifier to the frame
-	detectAndDisplay(original);
-	cout << "Done";
-	//imwrite("output.jpg", input);
-
-
-
-	return 0;
+	namedWindow("Overlay", WINDOW_NORMAL);
+	resizeWindow("Overlay", originalImage.cols / 6, originalImage.rows / 6);
+	imshow("Overlay", originalImage);
+	waitKey(0);
+	imwrite("Overlay.jpg", originalImage);
+	return output;
 }
 
 Mat enlargeTheFace(const Mat& original, const Mat& onlyFace) {
@@ -196,8 +223,9 @@ Mat fetchFace(const Mat& original, int startingX, int startingY, int width, int 
 }
 
 /** @function detectAndDisplay */
-void detectAndDisplay(Mat frame)
+Mat detectAndDisplay(const Mat &frame)
 {
+	Point finalCenter;
 	Mat jerFace;
 	Mat enlargedJer;
 	Mat frame_gray;
@@ -221,6 +249,7 @@ void detectAndDisplay(Mat frame)
 		int cx = faces[i].x + faces[i].width / 2;
 		int cy = faces[i].y + faces[i].height / 2 - faces[i].height * 0.08;
 		Point center(cx, cy);
+		finalCenter = center;
 		ellipse(frame, center, Size(faces[i].width / 2, (faces[i].height / 2) * 1.3), 0, 0, 360, Scalar(255, 0, 255), 8);
 
 
@@ -252,7 +281,6 @@ void detectAndDisplay(Mat frame)
 		// Detect smile
 	/*	std::vector<Rect> smile;
 		smile_cascade.detectMultiScale(faceROI, smile, 1.1, 2, 0 | cv::CASCADE_SCALE_IMAGE, cv::Size(60, 60));
-
 		for (size_t j = 0; j < smile.size(); j++) {
 			cv::Point center(faces[i].x + smile[j].x + smile[j].width * 0.5, faces[i].y + smile[j].y + smile[j].height * 0.5);
 			cv::ellipse(frame, center, cv::Size(smile[j].width * 0.5, smile[j].height * 0.5), 0, 0, 360, cv::Scalar(0, 255, 255), 4, 8, 0);
@@ -271,18 +299,47 @@ void detectAndDisplay(Mat frame)
 	//waitKey(0);
 
 
-	
+
 	namedWindow("Capture - Face detection", WINDOW_NORMAL);
 	resizeWindow("Capture - Face detection", jerFace.cols / 6, jerFace.rows / 6);
 	imshow("Capture - Face detection", enlargedJer);
 	waitKey(0);
 
 	imwrite("enlargedFace.jpg", enlargedJer);
-	/*namedWindow("Capture - enlargedFace", WINDOW_NORMAL);
-	resizeWindow("Capture - enlargedFace", enlargedJer.cols / 6, enlargedJer.rows / 6);
-	imshow("Capture - enlargedFace", enlargedJer);
-	waitKey(0);*/
+	
+	/*Mat blurredJer = blurCorner(enlargedJer, enlargedJer.cols, enlargedJer.rows, finalCenter);
+	namedWindow("Blurred Face", WINDOW_NORMAL);
+	resizeWindow("Blurred Face", blurredJer.cols / 6, blurredJer.rows / 6);
+	imshow("Blurred Face", blurredJer);
+	waitKey(0);
 
+	imwrite("blurredFace.jpg", blurredJer);*/
+	
+	return enlargedJer;
 }
 
+int main(int argc, const char** argv) {
+	std::cout << "runs";
+
+	Mat original = imread("OGJ.jpg");
+
+	// testing scale function
+
+	//-- 1. Load the cascades
+	if (!face_cascade.load(face_cascade_name)) { printf("--(1)Error loading\n"); return -1; };
+	if (!eyes_cascade.load(eyes_cascade_name)) { printf("--(2)Error loading\n"); return -1; };
+	//if (!smile_cascade.load(smile_cascade_name)) { printf("--(3)Error loading\n"); return -1; };
+
+	//-- 2. Apply the classifier to the frame
+	imwrite("original.jpg", original);
+	Mat enlarged = detectAndDisplay(original);
+	imwrite("originalAfterEnlarged.jpg", original);
+	Mat overlayed = overlay(enlarged, original);
+	imwrite("originalAfterOverlay.jpg", original);
+	cout << "Done";
+	//imwrite("output.jpg", input);
+
+
+	return 0;
+}
 
