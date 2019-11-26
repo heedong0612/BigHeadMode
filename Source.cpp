@@ -137,7 +137,7 @@ Mat scale(const Mat& input, int cx, int cy, double sx, double sy) {
 			double y = (row - centerRow) / sx + centerRow;
 
 			if (x > 0 && x < input.cols && y > 0 && y < input.rows) {
-				output.at<Vec3b>(row, col) = bilinearInterpolation(input, y, x); //input.at<Vec3b>(y, x);
+				output.at<Vec3b>(row, col) = input.at<Vec3b>(y, x); //bilinearInterpolation(input, y, x);
 			}
 		}
 	}
@@ -146,27 +146,27 @@ Mat scale(const Mat& input, int cx, int cy, double sx, double sy) {
 }
 
 Mat overlay(const Mat& sourceImage, const Mat& originalImage) {
-	Mat output(originalImage);
-	//for (int col = 0; col < originalImage.cols; col++) {
-	//	for (int row = 0; row < originalImage.rows; row++) {
-	//		if ((sourceImage.at<Vec3b>(row, col)[0] == 0 &&
-	//			sourceImage.at<Vec3b>(row, col)[1] == 255 &&
-	//			sourceImage.at<Vec3b>(row, col)[2] == 0))
-	//			
-	//			/*(sourceImage.at<Vec3b>(row, col)[0] != 255 &&
-	//				sourceImage.at<Vec3b>(row, col)[1] != 0 &&
-	//				sourceImage.at<Vec3b>(row, col)[2] != 255))*/ {
+	Mat output = originalImage.clone();
+	for (int col = 0; col < originalImage.cols; col++) {
+		for (int row = 0; row < originalImage.rows; row++) {
+			if ((sourceImage.at<Vec3b>(row, col)[0] != 0 &&
+				sourceImage.at<Vec3b>(row, col)[1] != 255 &&
+				sourceImage.at<Vec3b>(row, col)[2] != 0))
+				
+				/*(sourceImage.at<Vec3b>(row, col)[0] != 255 &&
+					sourceImage.at<Vec3b>(row, col)[1] != 0 &&
+					sourceImage.at<Vec3b>(row, col)[2] != 255))*/ {
 
-	//			output.at<Vec3b>(row, col) = sourceImage.at<Vec3b>(row, col);
-	//		}
-	//	}
-	//}
+				output.at<Vec3b>(row, col) = sourceImage.at<Vec3b>(row, col);
+			}
+		}
+	}
 
 	namedWindow("Overlay", WINDOW_NORMAL);
-	resizeWindow("Overlay", originalImage.cols / 6, originalImage.rows / 6);
-	imshow("Overlay", originalImage);
+	resizeWindow("Overlay", output.cols / 6, output.rows / 6);
+	imshow("Overlay", output);
 	waitKey(0);
-	imwrite("Overlay.jpg", originalImage);
+	imwrite("Overlay.jpg", output);
 	return output;
 }
 
@@ -189,7 +189,7 @@ Mat enlargeTheFace(const Mat& original, const Mat& onlyFace) {
 
 Mat fetchFace(const Mat& original, int startingX, int startingY, int width, int height, Point center) {
 
-	Mat onlyFace(original);
+	Mat onlyFace = original.clone();
 
 	for (int row = 0; row < original.rows; row++) {
 		for (int col = 0; col < original.cols; col++) {
@@ -250,7 +250,8 @@ Mat detectAndDisplay(const Mat &frame)
 		int cy = faces[i].y + faces[i].height / 2 - faces[i].height * 0.08;
 		Point center(cx, cy);
 		finalCenter = center;
-		ellipse(frame, center, Size(faces[i].width / 2, (faces[i].height / 2) * 1.3), 0, 0, 360, Scalar(255, 0, 255), 8);
+
+		//ellipse(frame, center, Size(faces[i].width / 2, (faces[i].height / 2) * 1.3), 0, 0, 360, Scalar(255, 0, 255), 8);
 
 
 		Point topLeft(faces[i].x, faces[i].y);
@@ -269,11 +270,12 @@ Mat detectAndDisplay(const Mat &frame)
 		{
 			Point eye_center(faces[i].x + eyes[j].x + eyes[j].width / 2, faces[i].y + eyes[j].y + eyes[j].height / 2);
 			int radius = cvRound((eyes[j].width + eyes[j].height) * 0.25);
-			circle(frame, eye_center, radius, Scalar(255, 0, 0), 4);
+			//circle(frame, eye_center, radius, Scalar(255, 0, 0), 4);
 		}
-
+		imwrite("beforeJerFetchFace.jpg", frame);
 		jerFace = fetchFace(frame, faces[i].x, faces[i].y, faces[i].width, faces[i].height * 1.3, center);
 		imwrite("faceOnly.jpg", jerFace);
+		imwrite("afterJerFaceFetch.jpg", frame);
 
 		enlargedJer = scale(jerFace, cx, cy, 2.0, 2.0);
 		imwrite("faceOnlyAfter.jpg", jerFace);
@@ -321,7 +323,7 @@ Mat detectAndDisplay(const Mat &frame)
 int main(int argc, const char** argv) {
 	std::cout << "runs";
 
-	Mat original = imread("OGJ.jpg");
+	Mat original = imread("Test.jpg");
 
 	// testing scale function
 
@@ -332,7 +334,7 @@ int main(int argc, const char** argv) {
 
 	//-- 2. Apply the classifier to the frame
 	imwrite("original.jpg", original);
-	Mat enlarged = detectAndDisplay(original);
+	Mat enlarged = detectAndDisplay(original); //this changed original fo some reason 
 	imwrite("originalAfterEnlarged.jpg", original);
 	Mat overlayed = overlay(enlarged, original);
 	imwrite("originalAfterOverlay.jpg", original);
