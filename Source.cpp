@@ -82,10 +82,15 @@ Vec3b bilinearInterpolation(const Mat& input, double row, double col) {
 	return px;
 }
 
-/*
-	--------------------------------------------Blur-------------------
-*/
-Mat blurCorner(Mat& face, int &width, int &height, Point center) {
+// Blurring the corner of the enlarged face
+// 
+// Pre-condition:
+// Post-condition:
+
+//[ [1/16, 1/8, 1/16],
+//	[1/8, 1/4, 1/8],
+//	[1/16, 1/8, 1/16]]
+Mat blurCorner(const Mat& face, int width, int height, Point center) {
 	Mat output(face);
 
 	for (int row = 0; row < output.rows; row++) {
@@ -108,6 +113,7 @@ Mat blurCorner(Mat& face, int &width, int &height, Point center) {
 			double leftHandSide2 = pow((row - center.y), 2) / pow((height / 2), 2);
 			double LHS = leftHandSide1 + leftHandSide2;
 
+			//if at border blur
 			if (LHS > 0.35 && LHS <0.38) {
 				//cout << "in ";
 				output.at<Vec3b>(row, col) = { 0, 0, 0 };
@@ -145,18 +151,19 @@ Mat scale(const Mat& input, int cx, int cy, double sx, double sy) {
 	return output;
 }
 
+// Overlay cropped enlarged head onto original picture
+//
+// Pre-condition: - sourceImage will be the enlarged head
+//				  - originalImage will be the original image
+// Post-condition: returns the overlayed image, without changing input objects
 Mat overlay(const Mat& sourceImage, const Mat& originalImage) {
 	Mat output = originalImage.clone();
 	for (int col = 0; col < originalImage.cols; col++) {
 		for (int row = 0; row < originalImage.rows; row++) {
-			if ((sourceImage.at<Vec3b>(row, col)[0] != 0 &&
+			if (sourceImage.at<Vec3b>(row, col)[0] != 0 &&
 				sourceImage.at<Vec3b>(row, col)[1] != 255 &&
-				sourceImage.at<Vec3b>(row, col)[2] != 0))
-				
-				/*(sourceImage.at<Vec3b>(row, col)[0] != 255 &&
-					sourceImage.at<Vec3b>(row, col)[1] != 0 &&
-					sourceImage.at<Vec3b>(row, col)[2] != 255))*/ {
-
+				sourceImage.at<Vec3b>(row, col)[2] != 0) // if the color is not green, then grab it
+				{
 				output.at<Vec3b>(row, col) = sourceImage.at<Vec3b>(row, col);
 			}
 		}
