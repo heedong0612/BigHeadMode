@@ -17,7 +17,8 @@ using namespace cv;
 using namespace std;
 
 /** Function Headers */
-Mat detectAndDisplay(const Mat &frame);
+Mat detectAndDisplay(const Mat& frame);
+void displayImage(const Mat& img, String winName);
 
 /** Global variables */
 String face_cascade_name = "haarcascade_frontalface_alt.xml";
@@ -27,7 +28,26 @@ CascadeClassifier face_cascade;
 CascadeClassifier eyes_cascade;
 //CascadeClassifier smile_cascade;
 
+Vec3b borderCheck(const Mat& input, int row, int col)
+{
+	int r, c;
+	if (row < 0)
+		r = 0;
+	else if (row >= input.rows)
+		r = input.rows- 1;
+	else
+		r = row;
 
+	if (col < 0)
+		c = 0;
+	else if (col >= input.cols)
+		c = input.cols - 1;
+	else
+		c = col;
+
+	return input.at<Vec3b>(r, c);
+
+}
 
 // bilinearInterpolation
 // pre: Imgage& input, double row, and double col are passed in. 
@@ -82,24 +102,66 @@ Vec3b bilinearInterpolation(const Mat& input, double row, double col) {
 	return px;
 }
 
+
+//convolute
+//Pre-condition:	input is a valid Image object
+//					kernel is a valid Image object
+//Post-condition:	returns an Image object resulted in convoluting
+//					the kernel onto the input Image
+Vec3b convolute(const Mat& input, const Mat kernel, int oRow, int oCol)
+{
+	int cr = kernel.rows / 2;
+	int cc = kernel.cols / 2;
+	double totalRed = 0;
+	double totalGreen = 0;
+	double totalBlue = 0;
+
+	// loop through kernel
+	for (int i = -1; i <= 1; i++)
+	{
+		for (int j = -1; j <= 1; j++)
+		{
+			double pKernel = kernel.at<double>(cr + i, cc + j);
+			//cout << pKernel << endl;
+			Vec3b pImage = borderCheck( input, oRow + i, oCol + j);
+
+			double newRed = pKernel * pImage[2];
+			double newGreen = pKernel * pImage[1];
+			double newBlue = pKernel * pImage[0];
+
+			totalRed += newRed;
+			totalGreen += newGreen;
+			totalBlue += newBlue;
+		}
+	}
+
+	//cout << "totalRed: " << totalRed << endl;
+	//cout << "totalGreen: " << totalGreen << endl;
+	//cout << "totalBlue: " << totalBlue << endl;
+	Vec3b p;
+	p[2] = totalRed;
+	p[1] = totalGreen;
+	p[0] = totalBlue;
+
+	return p;
+}
+
 // Blurring the corner of the enlarged face
 // 
 // Pre-condition:
 // Post-condition:
+Mat blurCorner(const Mat& input, int width, int height, Point center) {
+	Mat output = input.clone(); 
+	
 
-//[ [1/16, 1/8, 1/16],
-//	[1/8, 1/4, 1/8],
-//	[1/16, 1/8, 1/16]]
-Mat blurCorner(const Mat& face, int width, int height, Point center) {
-	Mat output(face);
+	//Make blur kernel
+	double kernelVals[9] = { 0.0625, 0.125, 0.0625, 0.125, 0.25, 0.125, 0.0625, 0.125, 0.0625 };
+	Mat blurKernel = Mat(3, 3, DataType<double>::type, kernelVals);
+
+
 
 	for (int row = 0; row < output.rows; row++) {
 		for (int col = 0; col < output.cols; col++) {
-
-			// if in the elipse region
-			// do nothing
-			// if not, put in green
-
 			// ellipse equation
 			// (x - h)^2 / a^2 + (y - k)^2 / b^2 = 1
 			// x is col
@@ -108,17 +170,17 @@ Mat blurCorner(const Mat& face, int width, int height, Point center) {
 			// a is the x-axis radius
 			// b is the y-axis radius
 
-
 			double leftHandSide1 = pow((col - center.x), 2) / pow((width / 2), 2);
 			double leftHandSide2 = pow((row - center.y), 2) / pow((height / 2), 2);
 			double LHS = leftHandSide1 + leftHandSide2;
 
 			//if at border blur
-			if (LHS > 0.35 && LHS <0.38) {
-				//cout << "in ";
-				output.at<Vec3b>(row, col) = { 0, 0, 0 };
+			if (LHS < 1.1) {
+				
+				Vec3b p = convolute(input, blurKernel, row, col);
+				output.at<Vec3b>(row, col) = p;
 			}
-
+			
 		}
 	}
 	return output;
@@ -131,16 +193,16 @@ Mat blurCorner(const Mat& face, int width, int height, Point center) {
 //		 scaled by float sx and the height of the input scaled by float sy,
 //		 using bilinear interpolation. pixels out side of the boundaries of
 //		 the input image is represented as black.
-Mat scale(const Mat& input, int cx, int cy, double sx, double sy) {
-	Mat output(input.rows, input.cols, CV_8UC3);
+Mat scale(const Mat& input, int cx, int cy, double s) {
+	Mat output = input.clone();//(input.rows, input.cols, CV_8UC3);
 
 	double centerRow = cy;
 	double centerCol = cx;
 
 	for (int row = 0; row < input.rows; row++) {
 		for (int col = 0; col < input.cols; col++) {
-			double x = (col - centerCol) / sy + centerCol;
-			double y = (row - centerRow) / sx + centerRow;
+			double x = (col - centerCol) / s + centerCol;
+			double y = (row - centerRow) / s + centerRow;
 
 			if (x > 0 && x < input.cols && y > 0 && y < input.rows) {
 				output.at<Vec3b>(row, col) = input.at<Vec3b>(y, x); //bilinearInterpolation(input, y, x);
@@ -156,54 +218,44 @@ Mat scale(const Mat& input, int cx, int cy, double sx, double sy) {
 // Pre-condition: - sourceImage will be the enlarged head
 //				  - originalImage will be the original image
 // Post-condition: returns the overlayed image, without changing input objects
-Mat overlay(const Mat& sourceImage, const Mat& originalImage) {
-	Mat output = originalImage.clone();
-	for (int col = 0; col < originalImage.cols; col++) {
-		for (int row = 0; row < originalImage.rows; row++) {
-			if (sourceImage.at<Vec3b>(row, col)[0] != 0 &&
-				sourceImage.at<Vec3b>(row, col)[1] != 255 &&
-				sourceImage.at<Vec3b>(row, col)[2] != 0) // if the color is not green, then grab it
-				{
-				output.at<Vec3b>(row, col) = sourceImage.at<Vec3b>(row, col);
-			}
+Mat overlay(const Mat& face, const Mat& input) {
+	
+	Mat output = input.clone();
+	
+	Vec3b green = { 0, 255, 0 };
+
+	for (int col = 0; col < input.cols; col++) {
+		for (int row = 0; row < input.rows; row++) { 
+			
+			// if the color is not green, then grab it
+			if (face.at<Vec3b>(row, col) != green)
+				output.at<Vec3b>(row, col) = face.at<Vec3b>(row, col);
+			
 		}
 	}
 
-	namedWindow("Overlay", WINDOW_NORMAL);
-	resizeWindow("Overlay", output.cols / 6, output.rows / 6);
-	imshow("Overlay", output);
-	waitKey(0);
+	//displayImage(output, "Overlay");
 	imwrite("Overlay.jpg", output);
+
 	return output;
 }
 
-Mat enlargeTheFace(const Mat& original, const Mat& onlyFace) {
 
-	Mat enlargedFace(onlyFace);
+// FetchFace
+// ---------
+// Pre-condition: input is a valid image
+// Post-condition: crops out ONE face and puts it onto a green background
+// ---------
+//		- const Mat& input: the source image
+//		- int width: the widht of the face
+//		- int height: the height of the face (chin to hairtop)
+//		- Point center: the center point of the face (around the nose)
+Mat fetchFace(const Mat& input, int width, int height, Point center) {
 
-	//scale(enlargedFace, 2, 2);
+	Mat onlyFace = input.clone();
 
-
-	imwrite("faceOnly.jpg", enlargedFace);
-	namedWindow("Capture - Face detection", WINDOW_NORMAL);
-	resizeWindow("Capture - Face detection", enlargedFace.cols / 6, enlargedFace.rows / 6);
-	imshow("Capture - Face detection", enlargedFace);
-	waitKey(0);
-
-	return enlargedFace;
-}
-
-
-Mat fetchFace(const Mat& original, int startingX, int startingY, int width, int height, Point center) {
-
-	Mat onlyFace = original.clone();
-
-	for (int row = 0; row < original.rows; row++) {
-		for (int col = 0; col < original.cols; col++) {
-
-			// if in the elipse region
-			// do nothing
-			// if not, put in green
+	for (int row = 0; row < onlyFace.rows; row++) {
+		for (int col = 0; col < onlyFace.cols; col++) {
 
 			// ellipse equation
 			// (x - h)^2 / a^2 + (y - k)^2 / b^2 = 1
@@ -213,16 +265,13 @@ Mat fetchFace(const Mat& original, int startingX, int startingY, int width, int 
 			// a is the x-axis radius
 			// b is the y-axis radius
 
-
 			double leftHandSide1 = pow((col - center.x), 2) / pow((width / 2), 2);
 			double leftHandSide2 = pow((row - center.y), 2) / pow((height / 2), 2);
 			double LHS = leftHandSide1 + leftHandSide2;
-
-			if (LHS > 1) {
-				//cout << "in ";
-				onlyFace.at<Vec3b>(row, col) = { 0, 255, 0 };
-			}
-
+			
+			// makes it green if outside the head
+			if (LHS > 1) 
+				onlyFace.at<Vec3b>(row, col) = { 0, 255, 0 }; 
 		}
 	}
 	return onlyFace;
@@ -230,8 +279,9 @@ Mat fetchFace(const Mat& original, int startingX, int startingY, int width, int 
 }
 
 /** @function detectAndDisplay */
-Mat detectAndDisplay(const Mat &frame)
+Mat detectAndDisplay(const Mat& frame)
 {
+	double scaleFactor = 2.0;
 	Point finalCenter;
 	Mat jerFace;
 	Mat enlargedJer;
@@ -245,9 +295,8 @@ Mat detectAndDisplay(const Mat &frame)
 	face_cascade.detectMultiScale(frame_gray, faces);
 
 	for (auto val : faces)
-	{
 		cout << val << " ";
-	}
+
 	cout << "Number of faces detected : " << faces.size();
 	cout << endl;
 
@@ -255,6 +304,8 @@ Mat detectAndDisplay(const Mat &frame)
 	{
 		int cx = faces[i].x + faces[i].width / 2;
 		int cy = faces[i].y + faces[i].height / 2 - faces[i].height * 0.08;
+		
+		// Point object of the face's center
 		Point center(cx, cy);
 		finalCenter = center;
 
@@ -273,49 +324,25 @@ Mat detectAndDisplay(const Mat &frame)
 		std::vector<Rect> eyes;
 		eyes_cascade.detectMultiScale(faceROI, eyes);
 
-		for (size_t j = 0; j < eyes.size(); j++)
-		{
-			Point eye_center(faces[i].x + eyes[j].x + eyes[j].width / 2, faces[i].y + eyes[j].y + eyes[j].height / 2);
-			int radius = cvRound((eyes[j].width + eyes[j].height) * 0.25);
-			//circle(frame, eye_center, radius, Scalar(255, 0, 0), 4);
-		}
-		imwrite("beforeJerFetchFace.jpg", frame);
-		jerFace = fetchFace(frame, faces[i].x, faces[i].y, faces[i].width, faces[i].height * 1.3, center);
-		imwrite("faceOnly.jpg", jerFace);
-		imwrite("afterJerFaceFetch.jpg", frame);
+		// Circling the eye, do we need this?
+		//for (size_t j = 0; j < eyes.size(); j++)
+		//{
+		//	Point eye_center(faces[i].x + eyes[j].x + eyes[j].width / 2, faces[i].y + eyes[j].y + eyes[j].height / 2);
+		//	int radius = cvRound((eyes[j].width + eyes[j].height) * 0.25);
+		//	//circle(frame, eye_center, radius, Scalar(255, 0, 0), 4);
+		//}
 
-		enlargedJer = scale(jerFace, cx, cy, 2.0, 2.0);
-		imwrite("faceOnlyAfter.jpg", jerFace);
-
-		// Detect smile
-	/*	std::vector<Rect> smile;
-		smile_cascade.detectMultiScale(faceROI, smile, 1.1, 2, 0 | cv::CASCADE_SCALE_IMAGE, cv::Size(60, 60));
-		for (size_t j = 0; j < smile.size(); j++) {
-			cv::Point center(faces[i].x + smile[j].x + smile[j].width * 0.5, faces[i].y + smile[j].y + smile[j].height * 0.5);
-			cv::ellipse(frame, center, cv::Size(smile[j].width * 0.5, smile[j].height * 0.5), 0, 0, 360, cv::Scalar(0, 255, 255), 4, 8, 0);
-		}*/
-
+		// An image with the cropped face with a green background
+		jerFace = fetchFace(frame, faces[i].width, faces[i].height * 1.3, center);
+		
+		// An image with the enlarged cropped face with a green background
+		enlargedJer = scale(jerFace, cx, cy, scaleFactor);
 	}
 
+	//displayImage(jerFace, "Capture - Face detection");
 
+	//imwrite("enlargedFace.jpg", enlargedJer);
 
-
-	//-- Show what you got
-	//imwrite("output.jpg", frame);
-	//namedWindow("Capture - Face detection", WINDOW_NORMAL);
-	//resizeWindow("Capture - Face detection", frame.cols / 6, frame.rows / 6);
-	//imshow("Capture - Face detection", frame);
-	//waitKey(0);
-
-
-
-	namedWindow("Capture - Face detection", WINDOW_NORMAL);
-	resizeWindow("Capture - Face detection", jerFace.cols / 6, jerFace.rows / 6);
-	imshow("Capture - Face detection", enlargedJer);
-	waitKey(0);
-
-	imwrite("enlargedFace.jpg", enlargedJer);
-	
 	/*Mat blurredJer = blurCorner(enlargedJer, enlargedJer.cols, enlargedJer.rows, finalCenter);
 	namedWindow("Blurred Face", WINDOW_NORMAL);
 	resizeWindow("Blurred Face", blurredJer.cols / 6, blurredJer.rows / 6);
@@ -323,14 +350,32 @@ Mat detectAndDisplay(const Mat &frame)
 	waitKey(0);
 
 	imwrite("blurredFace.jpg", blurredJer);*/
-	
+	Mat overlayed = overlay(enlargedJer, frame);
+
+	imwrite("beforeBlur.jpg", overlayed);
+	Mat output = blurCorner(overlayed, faces[0].width * scaleFactor, faces[0].height * 1.3 * scaleFactor, finalCenter);
+	displayImage(output, "blurred Corners");
+	imwrite("afterBlur.jpg", output);
 	return enlargedJer;
 }
+
+// displayImage
+//
+// Pre-condition: img is a valid img
+// Post-condition: Displays the image onto a popUp window
+void displayImage(const Mat& img, String winName)
+{
+	namedWindow(winName, WINDOW_NORMAL);
+	resizeWindow(winName, img.cols / 6, img.rows / 6);
+	imshow(winName, img);
+	waitKey(0);
+}
+
 
 int main(int argc, const char** argv) {
 	std::cout << "runs";
 
-	Mat original = imread("Test.jpg");
+	Mat original = imread("OGJ.jpg");
 
 	// testing scale function
 
@@ -343,8 +388,12 @@ int main(int argc, const char** argv) {
 	imwrite("original.jpg", original);
 	Mat enlarged = detectAndDisplay(original); //this changed original fo some reason 
 	imwrite("originalAfterEnlarged.jpg", original);
-	Mat overlayed = overlay(enlarged, original);
-	imwrite("originalAfterOverlay.jpg", original);
+	
+	//Mat ans = detectAndDisplay(original);
+
+
+	//Mat overlayed = overlay(enlarged, original);
+	//imwrite("originalAfterOverlay.jpg", original);
 	cout << "Done";
 	//imwrite("output.jpg", input);
 
