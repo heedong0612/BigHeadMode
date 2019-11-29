@@ -31,6 +31,7 @@ CascadeClassifier eyes_cascade;
 Vec3b borderCheck(const Mat& input, int row, int col)
 {
 	int r, c;
+
 	if (row < 0)
 		r = 0;
 	else if (row >= input.rows)
@@ -108,7 +109,7 @@ Vec3b bilinearInterpolation(const Mat& input, double row, double col) {
 //					kernel is a valid Image object
 //Post-condition:	returns an Image object resulted in convoluting
 //					the kernel onto the input Image
-Vec3b convolute(const Mat& input, const Mat kernel, int oRow, int oCol)
+Vec3b convolute(const Mat& input, const Mat& kernel, int oRow, int oCol)
 {
 	int cr = kernel.rows / 2;
 	int cc = kernel.cols / 2;
@@ -117,13 +118,12 @@ Vec3b convolute(const Mat& input, const Mat kernel, int oRow, int oCol)
 	double totalBlue = 0;
 
 	// loop through kernel
-	for (int i = -1; i <= 1; i++)
+	for (int i = -cr; i <= cr; i++)
 	{
-		for (int j = -1; j <= 1; j++)
+		for (int j = -cc; j <= cc; j++)
 		{
 			double pKernel = kernel.at<double>(cr + i, cc + j);
-			//cout << pKernel << endl;
-			Vec3b pImage = borderCheck( input, oRow + i, oCol + j);
+			Vec3b pImage = borderCheck(input, oRow + i, oCol + j);
 
 			double newRed = pKernel * pImage[2];
 			double newGreen = pKernel * pImage[1];
@@ -135,9 +135,6 @@ Vec3b convolute(const Mat& input, const Mat kernel, int oRow, int oCol)
 		}
 	}
 
-	//cout << "totalRed: " << totalRed << endl;
-	//cout << "totalGreen: " << totalGreen << endl;
-	//cout << "totalBlue: " << totalBlue << endl;
 	Vec3b p;
 	p[2] = totalRed;
 	p[1] = totalGreen;
@@ -155,10 +152,15 @@ Mat blurCorner(const Mat& input, int width, int height, Point center) {
 	
 
 	//Make blur kernel
-	double kernelVals[9] = { 0.0625, 0.125, 0.0625, 0.125, 0.25, 0.125, 0.0625, 0.125, 0.0625 };
-	Mat blurKernel = Mat(3, 3, DataType<double>::type, kernelVals);
-
-
+	//double kernelVals[9] = { 0.0625, 0.125, 0.0625, 0.125, 0.25, 0.125, 0.0625, 0.125, 0.0625 };
+	double kernelVals[25] = {
+	1.0 / 256, 4.0 / 256, 6.0 / 256, 4.0 / 256, 1.0 / 256,
+	4.0 / 256, 16.0 / 256, 24.0 / 256, 16.0 / 256, 4.0 / 256,
+	6.0 / 256, 24.0 / 256, 36.0 / 256, 24.0 / 256, 6.0 / 256,
+	4.0 / 256, 16.0 / 256, 24.0 / 256, 16.0 / 256, 4.0 / 256,
+	1.0 / 256, 4.0 / 256, 6.0 / 256, 4.0 / 256, 1.0 / 256
+	};
+	Mat blurKernel = Mat(5, 5, DataType<double>::type, kernelVals);
 
 	for (int row = 0; row < output.rows; row++) {
 		for (int col = 0; col < output.cols; col++) {
@@ -175,14 +177,14 @@ Mat blurCorner(const Mat& input, int width, int height, Point center) {
 			double LHS = leftHandSide1 + leftHandSide2;
 
 			//if at border blur
-			if (LHS < 1.1) {
-				
+			if (LHS < 1) {
 				Vec3b p = convolute(input, blurKernel, row, col);
 				output.at<Vec3b>(row, col) = p;
 			}
 			
 		}
 	}
+	displayImage(output, "bruh");
 	return output;
 }
 
@@ -354,7 +356,8 @@ Mat detectAndDisplay(const Mat& frame)
 
 	imwrite("beforeBlur.jpg", overlayed);
 	Mat output = blurCorner(overlayed, faces[0].width * scaleFactor, faces[0].height * 1.3 * scaleFactor, finalCenter);
-	displayImage(output, "blurred Corners");
+
+	//displayImage(output, "blurred Corners");
 	imwrite("afterBlur.jpg", output);
 	return enlargedJer;
 }
@@ -376,7 +379,7 @@ int main(int argc, const char** argv) {
 	std::cout << "runs";
 
 	Mat original = imread("OGJ.jpg");
-
+	
 	// testing scale function
 
 	//-- 1. Load the cascades
