@@ -28,10 +28,19 @@ CascadeClassifier face_cascade;
 CascadeClassifier eyes_cascade;
 //CascadeClassifier smile_cascade;
 
+// borderCheck
+// Pre-condition: input is a valid Mat object
+//					row and col can be any real integer
+// Post-condition: checks whether the element at row, col is a valid location 
+//					of the input Mat
 Vec3b borderCheck(const Mat& input, int row, int col)
 {
 	int r, c;
 
+	row < 0 ? r = 0 : row >= input.rows ? r = input.rows - 1 : r = row;
+	col < 0 ? c = 0 : col >= input.cols ? c = input.cols - 1 : c = col;
+
+	/*
 	if (row < 0)
 		r = 0;
 	else if (row >= input.rows)
@@ -45,7 +54,7 @@ Vec3b borderCheck(const Mat& input, int row, int col)
 		c = input.cols - 1;
 	else
 		c = col;
-
+	*/
 	return input.at<Vec3b>(r, c);
 
 }
@@ -107,6 +116,9 @@ Vec3b bilinearInterpolation(const Mat& input, double row, double col) {
 //convolute
 //Pre-condition:	input is a valid Image object
 //					kernel is a valid Image object
+//					Convolutes ONE patch of the image input with the location of oRow and oCol
+//					with the kernel kernel.
+//					Assumes kernel origin is always at the center
 //Post-condition:	returns an Image object resulted in convoluting
 //					the kernel onto the input Image
 Vec3b convolute(const Mat& input, const Mat& kernel, int oRow, int oCol)
@@ -143,13 +155,32 @@ Vec3b convolute(const Mat& input, const Mat& kernel, int oRow, int oCol)
 	return p;
 }
 
+// calcEllipse
+// Pre-condition : row, col are non-negative integers
+// Post-condition : returns a value based on the ellipse mathematical equation
+// ellipse equation
+	// (x - h)^2 / a^2 + (y - k)^2 / b^2 = 1
+	// x is col
+	// y is row
+	// h, k is the ellipse x, y center
+	// a is the x-axis radius
+	// b is the y-axis radius
+double calcEllipse(int row, int col, Point center, int width, int height)
+{
+	double leftHandSide1, leftHandSide2, ans;
+	leftHandSide1 = pow((col - center.x), 2) / pow((width / 2), 2);
+	leftHandSide2 = pow((row - center.y), 2) / pow((height / 2), 2);
+	ans = leftHandSide1 + leftHandSide2;
+
+	return ans;
+}
+
 // Blurring the corner of the enlarged face
 // 
 // Pre-condition:
 // Post-condition:
 Mat blurCorner(const Mat& input, int width, int height, Point center) {
 	Mat output = input.clone(); 
-	
 
 	//Make blur kernel
 	//double kernelVals[9] = { 0.0625, 0.125, 0.0625, 0.125, 0.25, 0.125, 0.0625, 0.125, 0.0625 };
@@ -164,20 +195,11 @@ Mat blurCorner(const Mat& input, int width, int height, Point center) {
 
 	for (int row = 0; row < output.rows; row++) {
 		for (int col = 0; col < output.cols; col++) {
-			// ellipse equation
-			// (x - h)^2 / a^2 + (y - k)^2 / b^2 = 1
-			// x is col
-			// y is row
-			// h, k is the ellipse x, y center
-			// a is the x-axis radius
-			// b is the y-axis radius
-
-			double leftHandSide1 = pow((col - center.x), 2) / pow((width / 2), 2);
-			double leftHandSide2 = pow((row - center.y), 2) / pow((height / 2), 2);
-			double LHS = leftHandSide1 + leftHandSide2;
+			
+			double LHS = calcEllipse(row, col, center, width, height);
 
 			//if at border blur
-			if (LHS < 1) {
+			if (LHS < 1.1 && LHS > 0.9) {
 				Vec3b p = convolute(input, blurKernel, row, col);
 				output.at<Vec3b>(row, col) = p;
 			}
@@ -196,7 +218,7 @@ Mat blurCorner(const Mat& input, int width, int height, Point center) {
 //		 using bilinear interpolation. pixels out side of the boundaries of
 //		 the input image is represented as black.
 Mat scale(const Mat& input, int cx, int cy, double s) {
-	Mat output = input.clone();//(input.rows, input.cols, CV_8UC3);
+	Mat output = input.clone();
 
 	double centerRow = cy;
 	double centerCol = cx;
@@ -206,12 +228,10 @@ Mat scale(const Mat& input, int cx, int cy, double s) {
 			double x = (col - centerCol) / s + centerCol;
 			double y = (row - centerRow) / s + centerRow;
 
-			if (x > 0 && x < input.cols && y > 0 && y < input.rows) {
-				output.at<Vec3b>(row, col) = input.at<Vec3b>(y, x); //bilinearInterpolation(input, y, x);
-			}
+			if (x > 0 && x < input.cols && y > 0 && y < input.rows) 
+				output.at<Vec3b>(row, col) = input.at<Vec3b>(y, x); 
 		}
 	}
-
 	return output;
 }
 
@@ -236,7 +256,6 @@ Mat overlay(const Mat& face, const Mat& input) {
 		}
 	}
 
-	//displayImage(output, "Overlay");
 	imwrite("Overlay.jpg", output);
 
 	return output;
@@ -259,17 +278,7 @@ Mat fetchFace(const Mat& input, int width, int height, Point center) {
 	for (int row = 0; row < onlyFace.rows; row++) {
 		for (int col = 0; col < onlyFace.cols; col++) {
 
-			// ellipse equation
-			// (x - h)^2 / a^2 + (y - k)^2 / b^2 = 1
-			// x is col
-			// y is row
-			// h, k is the ellipse x, y center
-			// a is the x-axis radius
-			// b is the y-axis radius
-
-			double leftHandSide1 = pow((col - center.x), 2) / pow((width / 2), 2);
-			double leftHandSide2 = pow((row - center.y), 2) / pow((height / 2), 2);
-			double LHS = leftHandSide1 + leftHandSide2;
+			double LHS = calcEllipse(row, col, center, width, height);
 			
 			// makes it green if outside the head
 			if (LHS > 1) 
@@ -312,7 +321,6 @@ Mat detectAndDisplay(const Mat& frame)
 		finalCenter = center;
 
 		//ellipse(frame, center, Size(faces[i].width / 2, (faces[i].height / 2) * 1.3), 0, 0, 360, Scalar(255, 0, 255), 8);
-
 
 		Point topLeft(faces[i].x, faces[i].y);
 		cout << topLeft << endl;
@@ -369,19 +377,21 @@ Mat detectAndDisplay(const Mat& frame)
 void displayImage(const Mat& img, String winName)
 {
 	namedWindow(winName, WINDOW_NORMAL);
-	resizeWindow(winName, img.cols / 6, img.rows / 6);
+	resizeWindow(winName, img.cols, img.rows);
 	imshow(winName, img);
 	waitKey(0);
 }
 
 
 int main(int argc, const char** argv) {
-	std::cout << "runs";
+	std::cout << "runs" << endl;
 
 	Mat original = imread("OGJ.jpg");
+	if (original.rows * original.cols >= 250000) //more than 500 x 500
+		resize(original, original, Size(), 0.2, 0.2);
+	else if (original.rows * original.cols >= 1000000)
+		resize(original, original, Size(), 0.1, 0.1);
 	
-	// testing scale function
-
 	//-- 1. Load the cascades
 	if (!face_cascade.load(face_cascade_name)) { printf("--(1)Error loading\n"); return -1; };
 	if (!eyes_cascade.load(eyes_cascade_name)) { printf("--(2)Error loading\n"); return -1; };
