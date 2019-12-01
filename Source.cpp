@@ -187,14 +187,7 @@ Mat blurCorner(const Mat& input, int width, int height, Point center) {
 	1.0 / 256, 4.0 / 256, 6.0 / 256, 4.0 / 256, 1.0 / 256
 	}; */
 
-	double kernelVals[49] = { 0.000036,
-0.000363,
-0.001446,
-0.002291,
-0.001446,
-0.000363,
-0.000036,
-0.000363,
+	double kernelVals[49] = { 0.000036, 0.000363, 0.001446, 0.002291, 0.001446, 0.000363, 0.000036, 0.000363,
 0.003676,
 0.014662,
 0.023226,
@@ -337,7 +330,8 @@ Mat fetchFace(const Mat& input, int width, int height, Point center) {
 /** @function detectAndDisplay */
 Mat detectAndDisplay(const Mat& frame)
 {
-	double scaleFactor = 1.4;
+	double scaleFactor = 1.6; 
+	cout << "width: " << frame.cols << "height: " << frame.rows << endl;
 	Point finalCenter;
 	Mat jerFace;
 	Mat enlargedJer;
@@ -357,6 +351,7 @@ Mat detectAndDisplay(const Mat& frame)
 	cout << "Number of faces detected : " << faces.size();
 	cout << endl;
 
+	// saves the center,width and height of each faces
 	vector<pair<Point, pair<double, double>>> facePositions(faces.size());
 
 	for (size_t i = 0; i < faces.size(); i++)
@@ -369,7 +364,7 @@ Mat detectAndDisplay(const Mat& frame)
 		Point center(cx, cy);
 		finalCenter = center;
 		
-		facePositions[i] = make_pair(finalCenter, make_pair(faces[i].width * scaleFactor, faces[i].height * 1.3 * scaleFactor));
+		facePositions[i] = make_pair(finalCenter, make_pair(faces[i].width * scaleFactor, faces[i].height * 1.4 * scaleFactor));
 
 		//ellipse(frame, center, Size(faces[i].width / 2, (faces[i].height / 2) * 1.3), 0, 0, 360, Scalar(255, 0, 255), 8);
 
@@ -385,31 +380,37 @@ Mat detectAndDisplay(const Mat& frame)
 		std::vector<Rect> eyes;
 		eyes_cascade.detectMultiScale(faceROI, eyes);
 
-		// Circling the eye, do we need this? -- yes i think we should show the mid steps of detecting faces - Donghee 
-		//for (size_t j = 0; j < eyes.size(); j++)
-		//{
-		//	Point eye_center(faces[i].x + eyes[j].x + eyes[j].width / 2, faces[i].y + eyes[j].y + eyes[j].height / 2);
-		//	int radius = cvRound((eyes[j].width + eyes[j].height) * 0.25);
-		//	//circle(frame, eye_center, radius, Scalar(255, 0, 0), 4);
-		//}
+
 
 		// An image with the cropped face with a green background
-		jerFace = fetchFace(frame, faces[i].width, faces[i].height * 1.3, center);
+		jerFace = fetchFace(frame, faces[i].width, faces[i].height * 1.4, center);
 
 		// An image with the enlarged cropped face with a green background
 		enlargedJer = scale(jerFace, cx, cy, scaleFactor);
 
 		overlayed = overlay(enlargedJer, overlayed);
 
+		//Circling the eye, do we need this? -- yes i think we should show the mid steps of detecting faces - Donghee 
+
+		for (size_t j = 0; j < eyes.size(); j++)
+		{
+			Point eye_center(faces[i].x + eyes[j].x + eyes[j].width / 2, faces[i].y + eyes[j].y + eyes[j].height / 2);
+			int radius = cvRound((eyes[j].width + eyes[j].height) * 0.25);
+			circle(frame, eye_center, radius, Scalar(255, 0, 0), 4);
+
+			cout << "eye for face #" << i << ": " << eye_center << endl;
+
+
+		}
+		displayImage(frame, "eye detected");
+
 	}
 
-	//displayImage(jerFace, "Capture - Face detection");
 
 	//Mat overlayed = overlay(enlargedJer, frame);
 	
 	// for loop to blur all edges of all faces
 	imwrite("beforeBlur.jpg", overlayed);
-
 	Mat output = overlayed.clone();
 	for (int i = 0; i < faces.size(); i++) {
 		output = blurCorner(output, facePositions[i].second.first, facePositions[i].second.second, facePositions[i].first);
@@ -438,7 +439,7 @@ void displayImage(const Mat& img, String winName)
 int main(int argc, const char** argv) {
 	std::cout << "runs" << endl;
 
-	Mat original = imread("threeFaces2.jpg");
+	Mat original = imread("OGJ.jpg");
 	while (original.rows * original.cols >= 500000) //more than 500 x 500
 		resize(original, original, Size(), 0.5, 0.5);
 	
