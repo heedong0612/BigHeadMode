@@ -288,9 +288,12 @@ Mat overlay(const Mat& face, const Mat& input) {
 		for (int row = 0; row < input.rows; row++) {
 
 			// if the color is not green, then grab it
-			if (face.at<Vec3b>(row, col) != green)
-				output.at<Vec3b>(row, col) = face.at<Vec3b>(row, col);
-
+			if (face.at<Vec3b>(row, col) != green) {
+				//output.at<Vec3b>(row, col) = face.at<Vec3b>(row, col);
+				int placeFaceHigher = input.rows / 20;
+				if (row - placeFaceHigher >= 0)
+					output.at<Vec3b>(row - placeFaceHigher, col) = face.at<Vec3b>(row, col);
+			}
 		}
 	}
 
@@ -364,7 +367,7 @@ Mat detectAndDisplay(const Mat& frame)
 		Point center(cx, cy);
 		finalCenter = center;
 		
-		facePositions[i] = make_pair(finalCenter, make_pair(faces[i].width * scaleFactor, faces[i].height * 1.4 * scaleFactor));
+		facePositions[i] = make_pair(finalCenter, make_pair(faces[i].width * scaleFactor * 0.9, faces[i].height * 1.4 * scaleFactor));
 
 		//ellipse(frame, center, Size(faces[i].width / 2, (faces[i].height / 2) * 1.3), 0, 0, 360, Scalar(255, 0, 255), 8);
 
@@ -383,7 +386,7 @@ Mat detectAndDisplay(const Mat& frame)
 
 
 		// An image with the cropped face with a green background
-		jerFace = fetchFace(frame, faces[i].width, faces[i].height * 1.4, center);
+		jerFace = fetchFace(frame, faces[i].width * 0.9, faces[i].height * 1.4, center);
 
 		// An image with the enlarged cropped face with a green background
 		enlargedJer = scale(jerFace, cx, cy, scaleFactor);
@@ -439,7 +442,7 @@ void displayImage(const Mat& img, String winName)
 int main(int argc, const char** argv) {
 	std::cout << "runs" << endl;
 
-	Mat original = imread("OGJ.jpg");
+	Mat original = imread("fourFaces.jpg");
 	while (original.rows * original.cols >= 500000) //more than 500 x 500
 		resize(original, original, Size(), 0.5, 0.5);
 	
