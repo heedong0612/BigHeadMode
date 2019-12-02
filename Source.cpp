@@ -1,4 +1,5 @@
 #include <opencv2/core/utility.hpp>
+#include "opencv2/core/core.hpp"
 #include "opencv2/objdetect.hpp"
 #include "opencv2/highgui.hpp"
 #include "opencv2/imgproc.hpp"
@@ -15,12 +16,16 @@ NEED to FIX:
 	1) enlarging scale should depend on the picture size and face size ratio
 
 
-MULTIPLE FACE DETECTION
+MULTIPLE FACE DETECTION -- done
 	1) count the number of faces detected
 	2) make a vector of that size to store face info (center, width, height) for ellipse
 	3) for each face, enlarge and stitch
 	4) go through the vectors and blur
 
+how to enlarge just the head instead of using ellipse shape
+	1) detect a face
+	2) get the region of interest
+	3) 
 ***********************************************/
 
 using namespace cv;
@@ -321,9 +326,9 @@ Mat fetchFace(const Mat& input, int width, int height, Point center) {
 
 			double LHS = calcEllipse(row, col, center, width, height);
 
-			// makes it green if outside the head
-			if (LHS > 1)
-				onlyFace.at<Vec3b>(row, col) = { 0, 255, 0 };
+// makes it green if outside the head
+if (LHS > 1)
+onlyFace.at<Vec3b>(row, col) = { 0, 255, 0 };
 		}
 	}
 	return onlyFace;
@@ -333,7 +338,7 @@ Mat fetchFace(const Mat& input, int width, int height, Point center) {
 /** @function detectAndDisplay */
 Mat detectAndDisplay(const Mat& frame)
 {
-	double scaleFactor = 1.6; 
+	double scaleFactor = 1.6;
 	cout << "width: " << frame.cols << "height: " << frame.rows << endl;
 	Point finalCenter;
 	Mat jerFace;
@@ -357,6 +362,7 @@ Mat detectAndDisplay(const Mat& frame)
 	// saves the center,width and height of each faces
 	vector<pair<Point, pair<double, double>>> facePositions(faces.size());
 
+	vector<Mat> extractedFaces(faces.size());
 	for (size_t i = 0; i < faces.size(); i++)
 	{
 
@@ -366,7 +372,7 @@ Mat detectAndDisplay(const Mat& frame)
 		// Point object of the face's center
 		Point center(cx, cy);
 		finalCenter = center;
-		
+
 		facePositions[i] = make_pair(finalCenter, make_pair(faces[i].width * scaleFactor * 0.9, faces[i].height * 1.4 * scaleFactor));
 
 		//ellipse(frame, center, Size(faces[i].width / 2, (faces[i].height / 2) * 1.3), 0, 0, 360, Scalar(255, 0, 255), 8);
@@ -379,23 +385,143 @@ Mat detectAndDisplay(const Mat& frame)
 
 		Mat faceROI = frame_gray(faces[i]);
 
+
+		Mat biggerRectangle(frame, Rect(faces[i].x - 30, faces[i].y - 30, faces[i].width + 60, faces[i].height + 60));
+		// gets bigger frame with face (so we don't crop some part of the faces)
+		// Rect biggerRect(faces[i].x - 30, faces[i].y - 30, faces[i].width + 60, faces[i].height + 60);
+
+		// img0
+		Mat biggerROI3 = biggerRectangle.clone();
+		// img1
+		Mat biggerROI;
+		// applying canny filter
+		Mat blurred;
+		imwrite("bigRegionOfInterest.jpg", biggerROI3);
+		double sizeX = (biggerROI3.rows % 2 != 1) ? biggerROI3.rows - 1 : biggerROI3.rows;
+		double sizeY = (biggerROI3.cols % 2 != 1) ? biggerROI3.cols - 1 : biggerROI3.cols;
+
+		GaussianBlur(biggerROI3, blurred, Size(sizeX, sizeY), 0.8);
+		Canny(blurred, biggerROI, 50, 40);
+		imwrite("afterCanny.jpg", biggerROI);
+
+		// find contours
+		vector<vector<Point>> contours;
+		cv::findContours(biggerROI, contours, RETR_EXTERNAL, CHAIN_APPROX_NONE);
+		// create mask
+		Mat mask = Mat::zeros(biggerROI.rows, biggerROI.cols, CV_8UC1);
+		// fills the connected components found
+		drawContours(mask, contours, -1, Scalar(255), FILLED);
+
+		imwrite("mask.jpg", mask);
+
+		imshow("region of interest", mask);
+
+		waitKey(0);
+
+		Mat filledMask = biggerROI3.clone();
+
+		Mat greenBlock(filledMask.rows, filledMask.cols, 1);
+		//// set background to green
+		greenBlock.setTo(Scalar(0, 255, 0));
+
+		for (int r = 0; r < mask.rows; r++) {
+			// from left
+			for (int c = 0; c < mask.cols; c++) {
+				uchar pixelGrayValue = mask.at<uchar>(r, c);
+
+				if ((int)pixelGrayValue == 0) {
+					filledMask.at<Vec3b>(r, c) = { 0, 255, 0 };
+				}
+				else {
+					break;
+				}
+			}
+			// from right
+			for (int c = mask.cols - 1; c >= 0; c--) {
+				uchar pixelGrayValue = mask.at<uchar>(r, c);
+
+				if ((int)pixelGrayValue == 0) {
+					filledMask.at<Vec3b>(r, c) = { 0, 255, 0 };
+				}
+				else {
+					break;
+				}
+			}
+		}
+		cout << "after outer" << endl;
+		imwrite("filledMask.jpg", filledMask);
+
+		imshow("filled", filledMask);
+		waitKey(0);
+		//Mat crop(biggerRectangle.rows, biggerRectangle.cols, CV_8UC3);
+		//// set background to green
+		//crop.setTo(Scalar(0, 255, 0));
+
+		//biggerRectangle.copyTo(crop, mask);
+
+		//normalize(mask.clone(), mask, 0.0, 255.0, NORM_MINMAX, CV_8UC1);
+
+		//imshow("final", crop);
+
 		//-- In each face, detect eyes
 		std::vector<Rect> eyes;
 		eyes_cascade.detectMultiScale(faceROI, eyes);
 
-
-
 		// An image with the cropped face with a green background
 		jerFace = fetchFace(frame, faces[i].width * 0.9, faces[i].height * 1.4, center);
-
+	
 		// An image with the enlarged cropped face with a green background
-		enlargedJer = scale(jerFace, cx, cy, scaleFactor);
 
-		overlayed = overlay(enlargedJer, overlayed);
+		//enlargedJer = scale(jerFace, cx, cy, scaleFactor);
+		//enlargedJer = scale(filledMask, filledMask.rows / 2, filledMask.cols / 2, scaleFactor);
+		//overlayed = overlay(enlargedJer, overlayed);
+		
+		// TO DO: 
+		// put that filled Mask in the exact place in the original picture size
+		// Rect(faces[i].x - 30, faces[i].y - 30, faces[i].width + 60, faces[i].height + 60))
 
+		Mat cannyDetectedFace = frame.clone();
+		cannyDetectedFace.setTo(Scalar(0, 255, 0));
+
+		for (int r = 0; r < filledMask.rows; r++) {
+			for (int c = 0; c < filledMask.cols; c++) {
+				
+				/*int rowInPic = faces[i].x + r;
+				int colInPic = faces[i].y + c;*/
+
+				
+			//	this code is overfitted to "OGJ.jpg"
+				int rowInPic = faces[i].x -15 + r;
+				int colInPic = faces[i].y -55 + c;
+				if (rowInPic >= 0 && rowInPic < cannyDetectedFace.rows
+					&& colInPic >= 0 && colInPic < cannyDetectedFace.cols) {
+					// not out of bound
+					cannyDetectedFace.at<Vec3b>(rowInPic, colInPic) = filledMask.at<Vec3b>(r, c);
+				}
+			}
+		}
+
+		imwrite("originalSizeWithHead.jpg", cannyDetectedFace);
+
+		imshow("stitched", cannyDetectedFace);
+		waitKey(0);
+
+		Mat scaledFace = scale(cannyDetectedFace, cx, cy, scaleFactor);
+
+		extractedFaces[i] = scaledFace;
+
+		//overlayed = overlay(scaledFace, overlayed);
+		imwrite("scaledHead.jpg", scaledFace);
+
+		imshow("scaled", scaledFace);
+		waitKey(0);
+
+	/*	imshow("overlayed", overlayed);
+		waitKey(0);
+		*/
 		//Circling the eye, do we need this? -- yes i think we should show the mid steps of detecting faces - Donghee 
 
-		for (size_t j = 0; j < eyes.size(); j++)
+		/*for (size_t j = 0; j < eyes.size(); j++)
 		{
 			Point eye_center(faces[i].x + eyes[j].x + eyes[j].width / 2, faces[i].y + eyes[j].y + eyes[j].height / 2);
 			int radius = cvRound((eyes[j].width + eyes[j].height) * 0.25);
@@ -405,24 +531,28 @@ Mat detectAndDisplay(const Mat& frame)
 
 
 		}
-		displayImage(frame, "eye detected");
+		displayImage(frame, "eye detected");*/
 
+	}
+
+	for (int i = 0; i < extractedFaces.size(); i++) {
+		overlayed = overlay(extractedFaces[i], overlayed);
 	}
 
 
 	//Mat overlayed = overlay(enlargedJer, frame);
 	
 	// for loop to blur all edges of all faces
-	imwrite("beforeBlur.jpg", overlayed);
+	/*imwrite("beforeBlur.jpg", overlayed);
 	Mat output = overlayed.clone();
 	for (int i = 0; i < faces.size(); i++) {
 		output = blurCorner(output, facePositions[i].second.first, facePositions[i].second.second, facePositions[i].first);
-	}
+	}*/
 
-	//Mat output = blurCorner(overlayed, faces[0].width * scaleFactor, faces[0].height * 1.3 * scaleFactor, finalCenter);
+	imshow("overlayed.jpg", overlayed);
+	waitKey(0);
 
-	//displayImage(output, "blurred Corners");
-	imwrite("afterBlur.jpg", output);
+	imwrite("output.jpg", overlayed);
 	return enlargedJer;
 }
 
@@ -442,29 +572,20 @@ void displayImage(const Mat& img, String winName)
 int main(int argc, const char** argv) {
 	std::cout << "runs" << endl;
 
-	Mat original = imread("fourFaces.jpg");
+	Mat original = imread("OGJ.jpg");
 	while (original.rows * original.cols >= 500000) //more than 500 x 500
 		resize(original, original, Size(), 0.5, 0.5);
 	
-
 	//-- 1. Load the cascades
 	if (!face_cascade.load(face_cascade_name)) { printf("--(1)Error loading\n"); return -1; };
 	if (!eyes_cascade.load(eyes_cascade_name)) { printf("--(2)Error loading\n"); return -1; };
-	//if (!smile_cascade.load(smile_cascade_name)) { printf("--(3)Error loading\n"); return -1; };
 
 	//-- 2. Apply the classifier to the frame
 	imwrite("original.jpg", original);
 	Mat enlarged = detectAndDisplay(original); //this changed original fo some reason 
 	imwrite("originalAfterEnlarged.jpg", original);
 
-	//Mat ans = detectAndDisplay(original);
-
-
-	//Mat overlayed = overlay(enlarged, original);
-	//imwrite("originalAfterOverlay.jpg", original);
 	cout << "Done";
-	//imwrite("output.jpg", input);
-
 
 	return 0;
 }
