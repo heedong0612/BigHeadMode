@@ -568,22 +568,193 @@ void displayImage(const Mat& img, String winName)
 	waitKey(0);
 }
 
+Mat detectAndDisplayUsingEdgeDetection(const Mat& frame) {
+	Mat output = frame.clone();
+	
+	double scaleFactor = 1.6;
+	cout << "width: " << frame.cols << "height: " << frame.rows << endl;
+	Point finalCenter;
+	Mat jerFace;
+	Mat enlargedJer;
+	Mat frame_gray;
+	Mat overlayed = frame.clone();
+	cvtColor(frame, frame_gray, COLOR_BGR2GRAY);
+	equalizeHist(frame_gray, frame_gray);
+
+
+	//-- Detect faces
+	std::vector<Rect> faces;
+	face_cascade.detectMultiScale(frame_gray, faces);
+
+	for (auto val : faces)
+		cout << val << " ";
+
+	cout << "Number of faces detected : " << faces.size();
+	cout << endl;
+
+	// saves the center,width and height of each faces
+	vector<pair<Point, pair<double, double>>> facePositions(faces.size());
+
+	vector<Mat> extractedFaces(faces.size());
+	for (size_t i = 0; i < faces.size(); i++)
+	{
+
+		int cx = faces[i].x + faces[i].width / 2;
+		int cy = faces[i].y + faces[i].height / 2 - faces[i].height * 0.08;
+
+		// Point object of the face's center
+		Point center(cx, cy);
+		finalCenter = center;
+
+		facePositions[i] = make_pair(finalCenter, make_pair(faces[i].width * scaleFactor * 0.9, faces[i].height * 1.4 * scaleFactor));
+
+		//ellipse(frame, center, Size(faces[i].width / 2, (faces[i].height / 2) * 1.3), 0, 0, 360, Scalar(255, 0, 255), 8);
+
+		Point topLeft(faces[i].x, faces[i].y);
+		cout << topLeft << endl;
+		Point bottomRight(faces[i].x + faces[i].width, faces[i].y + faces[i].height);
+
+		// rectangle(frame, topLeft, bottomRight, Scalar(255, 0, 255), 8, 0, 0);
+
+		Mat faceROI = frame_gray(faces[i]);
+
+
+		Mat biggerRectangle(frame, Rect(faces[i].x - 30, faces[i].y - 30, faces[i].width + 60, faces[i].height + 60));
+		// gets bigger frame with face (so we don't crop some part of the faces)
+		// Rect biggerRect(faces[i].x - 30, faces[i].y - 30, faces[i].width + 60, faces[i].height + 60);
+
+		// img0
+		Mat biggerROI3 = biggerRectangle.clone();
+		// img1
+		Mat biggerROI;
+		// applying canny filter
+		Mat blurred;
+		imwrite("bigRegionOfInterest.jpg", biggerROI3);
+		double sizeX = (biggerROI3.rows % 2 != 1) ? biggerROI3.rows - 1 : biggerROI3.rows;
+		double sizeY = (biggerROI3.cols % 2 != 1) ? biggerROI3.cols - 1 : biggerROI3.cols;
+
+		GaussianBlur(biggerROI3, blurred, Size(sizeX, sizeY), 0.8);
+		Canny(blurred, biggerROI, 50, 40);
+		imwrite("afterCanny.jpg", biggerROI);
+
+		// find contours
+		vector<vector<Point>> contours;
+		cv::findContours(biggerROI, contours, RETR_EXTERNAL, CHAIN_APPROX_NONE);
+		// create mask
+		Mat mask = Mat::zeros(biggerROI.rows, biggerROI.cols, CV_8UC1);
+		// fills the connected components found
+		drawContours(mask, contours, -1, Scalar(255), FILLED);
+
+		imwrite("mask.jpg", mask);
+		imshow("region of interest", mask);
+		waitKey(0);
+
+		Mat filledMask = biggerROI3.clone();
+
+		Mat greenBlock(filledMask.rows, filledMask.cols, 1);
+		//// set background to green
+		greenBlock.setTo(Scalar(0, 255, 0));
+
+		for (int r = 0; r < mask.rows; r++) {
+			// from left
+			for (int c = 0; c < mask.cols; c++) {
+				uchar pixelGrayValue = mask.at<uchar>(r, c);
+
+				if ((int)pixelGrayValue == 0) {
+					filledMask.at<Vec3b>(r, c) = { 0, 255, 0 };
+				}
+				else {
+					break;
+				}
+			}
+			// from right
+			for (int c = mask.cols - 1; c >= 0; c--) {
+				uchar pixelGrayValue = mask.at<uchar>(r, c);
+
+				if ((int)pixelGrayValue == 0) {
+					filledMask.at<Vec3b>(r, c) = { 0, 255, 0 };
+				}
+				else {
+					break;
+				}
+			}
+		}
+		cout << "after outer" << endl;
+		imwrite("filledMask.jpg", filledMask);
+
+		imshow("filled", filledMask);
+		waitKey(0);
+
+		// An image with the cropped face with a green background
+		jerFace = fetchFace(frame, faces[i].width * 0.9, faces[i].height * 1.4, center);
+
+		// An image with the enlarged cropped face with a green background
+
+		// put that filled Mask in the exact place in the original picture size
+		// Rect(faces[i].x - 30, faces[i].y - 30, faces[i].width + 60, faces[i].height + 60))
+		Mat cannyDetectedFace = frame.clone();
+		cannyDetectedFace.setTo(Scalar(0, 255, 0));
+
+		for (int r = 0; r < filledMask.rows; r++) {
+			for (int c = 0; c < filledMask.cols; c++) {
+
+				/*int rowInPic = faces[i].x + r;
+				int colInPic = faces[i].y + c;*/
+				//	this code is overfitted to "OGJ.jpg"
+				int rowInPic = faces[i].x - 15 + r;
+				int colInPic = faces[i].y - 55 + c;
+				if (rowInPic >= 0 && rowInPic < cannyDetectedFace.rows
+					&& colInPic >= 0 && colInPic < cannyDetectedFace.cols) {
+					// not out of bound
+					cannyDetectedFace.at<Vec3b>(rowInPic, colInPic) = filledMask.at<Vec3b>(r, c);
+				}
+			}
+		}
+		imwrite("originalSizeWithHead.jpg", cannyDetectedFace);
+		imshow("stitched", cannyDetectedFace);
+		waitKey(0);
+
+		Mat scaledFace = scale(cannyDetectedFace, cx, cy, scaleFactor);
+		extractedFaces[i] = scaledFace;
+
+		imwrite("scaledHead.jpg", scaledFace);
+		imshow("scaled", scaledFace);
+		waitKey(0);
+	}
+
+	for (int i = 0; i < extractedFaces.size(); i++) {
+		overlayed = overlay(extractedFaces[i], overlayed);
+	}
+
+	imshow("overlayed.jpg", overlayed);
+	waitKey(0);
+	imwrite("output.jpg", overlayed);
+
+	return overlayed;
+
+	// return output;
+}
 
 int main(int argc, const char** argv) {
 	std::cout << "runs" << endl;
 
-	Mat original = imread("OGJ.jpg");
-	while (original.rows * original.cols >= 500000) //more than 500 x 500
-		resize(original, original, Size(), 0.5, 0.5);
+	//Mat original = imread("OGJ.jpg");
+	Mat input = imread("OGJ.jpg");
+	while (input.rows * input.cols >= 500000) //more than 500 x 500
+		resize(input, input, Size(), 0.5, 0.5);
 	
 	//-- 1. Load the cascades
 	if (!face_cascade.load(face_cascade_name)) { printf("--(1)Error loading\n"); return -1; };
 	if (!eyes_cascade.load(eyes_cascade_name)) { printf("--(2)Error loading\n"); return -1; };
 
-	//-- 2. Apply the classifier to the frame
-	imwrite("original.jpg", original);
-	Mat enlarged = detectAndDisplay(original); //this changed original fo some reason 
-	imwrite("originalAfterEnlarged.jpg", original);
+	////-- 2. Apply the classifier to the frame
+	//imwrite("original.jpg", original);
+	//Mat enlarged = detectAndDisplay(original); //this changed original fo some reason 
+	//imwrite("originalAfterEnlarged.jpg", original);
+	
+	Mat output = detectAndDisplayUsingEdgeDetection(input);
+	cout << output.cols << "< " << output.rows << endl;
+	imwrite("output_edgeDetection.jpg", output);
 
 	cout << "Done";
 
