@@ -568,6 +568,13 @@ void displayImage(const Mat& img, String winName)
 	waitKey(0);
 }
 
+// detectAndDisplayUsingEdgeDetection
+//
+// pre-condition: given frame is a valid image
+// post-condition: retrireves a region of interest (per face) from a given frame,
+//				   performs gaussian smoothing and detects edges using Canny.
+//				   Creates a mask that only includes facial part, enlarges and 
+//				   attaches to the original image to create a big head picture.
 Mat detectAndDisplayUsingEdgeDetection(const Mat& frame) {
 	Mat output = frame.clone();
 	
@@ -747,11 +754,7 @@ int main(int argc, const char** argv) {
 	if (!face_cascade.load(face_cascade_name)) { printf("--(1)Error loading\n"); return -1; };
 	if (!eyes_cascade.load(eyes_cascade_name)) { printf("--(2)Error loading\n"); return -1; };
 
-	////-- 2. Apply the classifier to the frame
-	//imwrite("original.jpg", original);
-	//Mat enlarged = detectAndDisplay(original); //this changed original fo some reason 
-	//imwrite("originalAfterEnlarged.jpg", original);
-	
+	////-- 2. Apply detectAndDisplayUsingEdgeDetection to intput
 	Mat output = detectAndDisplayUsingEdgeDetection(input);
 	cout << output.cols << "< " << output.rows << endl;
 	imwrite("output_edgeDetection.jpg", output);
