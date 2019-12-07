@@ -1,1 +1,1 @@
-start /w ../x64/Debug/FinalProject.exe OGJ.jpg
+start /w ../x64/Debug/FinalProject.exe OGJ.jpg fourFaces.jpg
